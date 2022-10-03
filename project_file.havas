@@ -1,0 +1,35 @@
+# Solution 1.1
+# Configuration file -> Able to use with diff script
+# Learing: Parsing ?complex logic
+
+# Soliton 1.2
+# Custom file parsing method
+# 0. Read file
+# 1. Start new on Empty line
+# 2. Parse Constantly
+# 3. Exec on end
+
+
+# Soultion 2
+# Bash file -> Easy implementation; harder to modify
+
+# Parsing
+# awk '/\[/{prefix=$0; next} $1{print prefix $0}' file.ini
+
+
+
+# Example:
+[Named]
+path ~/Documents/Projects/*
+message 'I have no clue what happend'
+no_commit
+folder_regex *
+files *
+
+
+# Previous space cuts parsing
+[Named#2]
+path ~/NewHome/Projects/Candy-Rush
+message 'I have no clue what happend'
+files src/*
+
