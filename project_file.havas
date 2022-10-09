@@ -17,13 +17,12 @@
 # awk '/\[/{prefix=$0; next} $1{print prefix $0}' file.ini
 
 
-
 # Example:
 [Named]
-path ~/Documents/Projects/*
+path ~/Documents/Projects/
 message 'I have no clue what happend'
 no_commit
-folder_regex *
+folder_regex .*
 files *
 
 
