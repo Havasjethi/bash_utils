@@ -1,20 +1,19 @@
 #[macro_use]
 extern crate serde_derive;
-// use serde_derive::Deserialize;
 
 use git2::{RemoteCallbacks, Repository};
 use shellexpand;
 
-use std::{fs, os::unix::process::CommandExt};
+use std::fs;
 use toml;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Outer {
     project: Vec<ProjectConfig>,
     defaults: Option<Defaults>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Defaults {
     message: Option<String>,
     no_commit: Option<bool>,
@@ -22,18 +21,20 @@ struct Defaults {
     no_push: Option<bool>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct ProjectConfig {
+    // TODO ::
     name: Option<String>,
     path: Option<String>,
     message: Option<String>,
     no_commit: Option<bool>,
+    // TODO ::
     folder_regex: Option<String>,
     files: Option<String>,
     no_push: Option<bool>,
+    ignore: Option<bool>,
 }
 
-const HAVAS_GIT_PROGRAM: &'static str = "havas_git.sh";
 const HAVAS_GIT_CONFIG_PATH: &'static str = "/bin/project_file.toml";
 const HAVAS_GIT_CONFIG_PATH_KEY: &'static str = "HAVAS_PROJECT_CONFIG";
 
@@ -41,26 +42,30 @@ fn main() {
     let parsed = get_config();
 
     for project in parsed.project {
-        // do_operation(project);
-        do_shit_git(project, &parsed.defaults);
+        if project.ignore.unwrap_or(false) {
+            continue;
+        }
+        commit_and_or_push(project, &parsed.defaults);
     }
 }
 
-fn do_shit_git(project: ProjectConfig, outer: &Option<Defaults>) {
+fn commit_and_or_push(project: ProjectConfig, defaults: &Option<Defaults>) {
     let path = shellexpand::tilde(&project.path.as_ref().expect("Workdir missing")).to_string();
     let repo = Repository::open(path).expect("Folder not found");
     let mut index = repo.index().expect("Unable to get index");
     let head = repo.head().expect("Unable to get HEAD");
-    dbg!(&outer);
-    let defaults = outer.as_ref().unwrap();
+    let defaults = defaults.as_ref().unwrap();
     let commit_message = project
         .message
         .or(defaults.message.clone())
         .unwrap_or("I was too lazy to write commit message".into());
 
-    // If commits enabled -> Commit selected changes
+    let no_commit = project
+        .no_commit
+        .or(defaults.no_commit.clone())
+        .unwrap_or(false);
 
-    let no_commit  = project.no_commit.or(defaults.no_commit.clone()).unwrap_or(false);
+    // Commit message
     if !no_commit {
         let files_to_add = project
             .files
@@ -77,21 +82,24 @@ fn do_shit_git(project: ProjectConfig, outer: &Option<Defaults>) {
         let head_commit = head.peel_to_commit().unwrap();
         let sign = repo.signature().unwrap();
 
-        let commit_oid = repo
-            .commit(
-                Some("HEAD"),
-                &sign,
-                &sign,
-                &commit_message,
-                &tree,
-                &[&head_commit],
-            )
-            .unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sign,
+            &sign,
+            &commit_message,
+            &tree,
+            &[&head_commit],
+        )
+        .unwrap();
 
-        index.read(false);
-        index.write();
+        index.read(false).unwrap();
+        index.write().unwrap();
     }
 
+    let no_push = project.no_push.or(defaults.no_push).unwrap_or(false);
+    if no_push {
+        return;
+    }
     let mut remote = repo.find_remote("origin").unwrap();
 
     let branch_ref: &[&str] = &[head.name().unwrap()];
@@ -99,42 +107,12 @@ fn do_shit_git(project: ProjectConfig, outer: &Option<Defaults>) {
     let mut push_options: git2::PushOptions = git2::PushOptions::new();
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        dbg!((&_url, &username_from_url, &_allowed_types));
         // Gitlab ✓  GitHub ✓
-        let res = git2::Cred::ssh_key_from_agent(&username_from_url.unwrap());
-        dbg!(res.is_ok());
-        res
+        git2::Cred::ssh_key_from_agent(&username_from_url.unwrap())
     });
 
     push_options.remote_callbacks(callbacks);
     remote.push(&branch_ref, Some(&mut push_options)).unwrap();
-}
-
-fn do_operation(project: ProjectConfig) {
-    let workdir = shellexpand::tilde(&project.path.unwrap()).to_string();
-    let mut args = vec![
-        "--absolute_index".to_string(),
-        "--workdir".to_string(),
-        workdir.clone(),
-    ];
-
-    if let Some(msg) = project.message {
-        args.push("--message".to_string());
-        args.push(format!("\"{}\"", msg));
-    }
-    if let Some(msg) = project.no_commit {
-        if msg {
-            args.push("--no_commit".to_string());
-        }
-    } else if let Some(files) = project.files {
-        args.push("--files".to_string());
-        args.push(format!("{}/{}", workdir, files));
-    }
-
-    let mut process = std::process::Command::new(HAVAS_GIT_PROGRAM);
-    dbg!(&args);
-    process.args(args);
-    process.exec();
 }
 
 fn get_config() -> Outer {
