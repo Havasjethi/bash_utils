@@ -8,7 +8,7 @@ use std::fs;
 use toml;
 
 #[derive(Deserialize)]
-struct Outer {
+struct HavasProjectConfig {
     project: Vec<ProjectConfig>,
     defaults: Option<Defaults>,
 }
@@ -36,11 +36,19 @@ struct ProjectConfig {
     ignore: Option<bool>,
 }
 
+impl ProjectConfig {
+    // pub fn should_push (&self, defaults: Defaults) -> bool {
+    // self.no_push.or_else(defaults.map(|e| ))
+
+    // }
+}
+
 const HAVAS_GIT_CONFIG_PATH: &'static str = "/bin/project_file.toml";
 const HAVAS_GIT_CONFIG_PATH_KEY: &'static str = "HAVAS_PROJECT_CONFIG";
 
 const DEFAULT_MESSAGE: &'static str = "I too lazy to write commit message";
 const DEFAULT_NO_COMMIT: bool = false;
+const DEFAULT_SHOULD_PUSH: bool = true;
 const DEFAULT_FILES_TO_ADD: &'static str = "*";
 
 fn main() {
@@ -147,7 +155,7 @@ fn push(repo: &git2::Repository, target: &str) {
     remote.push(&branch_ref, Some(&mut push_options)).unwrap();
 }
 
-fn get_config() -> Outer {
+fn get_config() -> HavasProjectConfig {
     let project_file = std::env::args_os()
         .skip(1)
         // .map(|e| e.into())
@@ -162,6 +170,6 @@ fn get_config() -> Outer {
 
     let file = fs::read_to_string(&project_file)
         .expect(&format!("Unable to find file: {:?}", &project_file));
-    let parsed: Outer = toml::from_str(&file).expect("Wrong file formatting!!");
+    let parsed: HavasProjectConfig = toml::from_str(&file).expect("Wrong file formatting!!");
     parsed
 }
