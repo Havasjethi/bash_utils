@@ -126,17 +126,9 @@ fn create_commit(repo: &git2::Repository, files_to_add: Option<&str>, commit_mes
 }
 
 fn push(repo: &git2::Repository, project: &ProjectConfig, defaults: &Option<Defaults>) {
-    let mut index = repo.index().expect("Unable to get index");
     let head = repo.head().expect("Unable to get HEAD");
 
-    let defaults = defaults.as_ref().unwrap();
-
     // Commit message
-
-    let no_push = project.no_push.or(defaults.no_push).unwrap_or(false);
-    if no_push {
-        return;
-    }
     let mut remote = repo.find_remote("origin").unwrap();
 
     let branch_ref: &[&str] = &[head.name().unwrap()];
