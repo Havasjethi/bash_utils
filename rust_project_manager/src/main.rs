@@ -3,8 +3,6 @@ extern crate serde_derive;
 
 use git2::{RemoteCallbacks, Repository};
 use shellexpand;
-
-use std::fs;
 use toml;
 
 #[derive(Deserialize)]
@@ -18,7 +16,51 @@ struct Defaults {
     message: Option<String>,
     no_commit: Option<bool>,
     files: Option<String>,
-    no_push: Option<bool>,
+    should_push: Option<bool>,
+    remote: Option<String>,
+}
+
+struct InitializedDefault {
+    message: String,
+    no_commit: bool,
+    files: String,
+    should_push: bool,
+    remote: String,
+}
+
+impl InitializedDefault {
+    pub fn from_defaults(def: &Option<Defaults>) -> Self {
+        if let Some(defaults) = def {
+            return InitializedDefault {
+                message: defaults
+                    .message
+                    .clone()
+                    .unwrap_or(DEFAULT_MESSAGE.to_string()),
+                no_commit: defaults.no_commit.unwrap_or(DEFAULT_NO_COMMIT),
+                files: defaults
+                    .files
+                    .clone()
+                    .unwrap_or(DEFAULT_FILES_TO_ADD.to_string()),
+                should_push: defaults.should_push.unwrap_or(DEFAULT_SHOULD_PUSH),
+                remote: defaults
+                    .remote
+                    .clone()
+                    .unwrap_or(DEFAULT_REMOTE.to_string()),
+            };
+        } else {
+            Self::default()
+        }
+    }
+
+    pub fn default() -> Self {
+        InitializedDefault {
+            message: DEFAULT_MESSAGE.to_string(),
+            no_commit: DEFAULT_NO_COMMIT,
+            files: DEFAULT_FILES_TO_ADD.to_string(),
+            should_push: DEFAULT_SHOULD_PUSH,
+            remote: DEFAULT_REMOTE.to_string(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -29,21 +71,12 @@ struct ProjectConfig {
     // TODO :: Create callable function // run:_file_name_ or file://file_path
     message: Option<String>,
     no_commit: Option<bool>,
-    // TODO ::
-    folder_regex: Option<String>,
+    // TODO :: ?? Folder matching for spicyness
+    // folder_regex: Option<String>,
     files: Option<String>,
     should_push: Option<bool>,
     ignore: Option<bool>,
-}
-
-impl ProjectConfig {
-    pub fn should_push(&self, defaults: &Option<Defaults>) -> bool {
-        self.should_push
-            .or(defaults
-                .as_ref()
-                .map(|e| e.no_push.unwrap_or(DEFAULT_SHOULD_PUSH)))
-            .unwrap_or(DEFAULT_SHOULD_PUSH)
-    }
+    remote: Option<String>,
 }
 
 const HAVAS_GIT_CONFIG_PATH: &'static str = "/bin/project_file.toml";
@@ -53,56 +86,41 @@ const DEFAULT_MESSAGE: &'static str = "I too lazy to write commit message";
 const DEFAULT_NO_COMMIT: bool = false;
 const DEFAULT_SHOULD_PUSH: bool = true;
 const DEFAULT_FILES_TO_ADD: &'static str = "*";
+const DEFAULT_REMOTE: &'static str = "origin";
 
 fn main() {
     let parsed = get_config();
     let defaults = &parsed.defaults;
+    let defaults = InitializedDefault::from_defaults(defaults);
 
     for project in &parsed.project {
         if project.ignore.unwrap_or(false) {
+            println!(
+                "Ignoring project: {}",
+                project
+                    .name
+                    .as_ref()
+                    .or(project.path.as_ref())
+                    .unwrap_or(&"".to_owned())
+            );
             continue;
         }
 
         let path = shellexpand::tilde(&project.path.as_ref().expect("Workdir missing")).to_string();
         let repo = Repository::open(path).expect("Folder not found");
 
-        let commit_message: &str = project.message.as_ref().map(|e| e.as_str()).unwrap_or(
-            defaults
-                .as_ref()
-                .map(|e| {
-                    e.message
-                        .as_ref()
-                        .map(|e| e.as_str())
-                        .unwrap_or(DEFAULT_MESSAGE)
-                })
-                .unwrap_or(DEFAULT_MESSAGE),
-        );
+        let commit_message: &str = project.message.as_ref().unwrap_or(&defaults.message);
 
-        let no_commit: bool = project.no_commit.unwrap_or(
-            defaults
-                .as_ref()
-                .map(|e| e.no_commit.unwrap_or(DEFAULT_NO_COMMIT))
-                .unwrap_or(DEFAULT_NO_COMMIT),
-        );
+        let no_commit: bool = project.no_commit.unwrap_or(defaults.no_commit);
 
         if !no_commit {
-            let files = project.files.as_ref().map(|e| e.as_str()).unwrap_or(
-                defaults
-                    .as_ref()
-                    .map(|e| {
-                        e.files
-                            .as_ref()
-                            .map(|e| e.as_str())
-                            .unwrap_or(DEFAULT_FILES_TO_ADD)
-                    })
-                    .unwrap_or(DEFAULT_FILES_TO_ADD),
-            );
-            create_commit(&repo, Some(files), commit_message);
+            let files = project.files.as_ref().unwrap_or(&defaults.files);
+            create_commit(&repo, Some(&files), &commit_message);
         }
 
-        if project.should_push(&defaults) {
-            let target_branch = "origin";
-            push(&repo, target_branch);
+        if project.should_push.unwrap_or(defaults.should_push) {
+            let target_branch = project.remote.as_ref().unwrap_or(&defaults.remote);
+            push(&repo, &target_branch);
         }
     }
 }
@@ -141,7 +159,6 @@ fn create_commit(repo: &git2::Repository, files_to_add: Option<&str>, commit_mes
 }
 
 fn push(repo: &git2::Repository, target: &str) {
-    let mut index = repo.index().expect("Unable to get index");
     let head = repo.head().expect("Unable to get HEAD");
 
     let mut remote = repo.find_remote(target).unwrap();
@@ -173,7 +190,7 @@ fn get_config() -> HavasProjectConfig {
             s
         });
 
-    let file = fs::read_to_string(&project_file)
+    let file = std::fs::read_to_string(&project_file)
         .expect(&format!("Unable to find file: {:?}", &project_file));
     let parsed: HavasProjectConfig = toml::from_str(&file).expect("Wrong file formatting!!");
     parsed
