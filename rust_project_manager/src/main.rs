@@ -19,6 +19,7 @@ struct Defaults {
     message: Option<String>,
     no_commit: Option<bool>,
     files: Option<String>,
+    no_push: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -29,6 +30,7 @@ struct ProjectConfig {
     no_commit: Option<bool>,
     folder_regex: Option<String>,
     files: Option<String>,
+    no_push: Option<bool>,
 }
 
 const HAVAS_GIT_PROGRAM: &'static str = "havas_git.sh";
@@ -49,6 +51,7 @@ fn do_shit_git(project: ProjectConfig, outer: &Option<Defaults>) {
     let repo = Repository::open(path).expect("Folder not found");
     let mut index = repo.index().expect("Unable to get index");
     let head = repo.head().expect("Unable to get HEAD");
+    dbg!(&outer);
     let defaults = outer.as_ref().unwrap();
     let commit_message = project
         .message
@@ -56,11 +59,13 @@ fn do_shit_git(project: ProjectConfig, outer: &Option<Defaults>) {
         .unwrap_or("I was too lazy to write commit message".into());
 
     // If commits enabled -> Commit selected changes
-    if project.no_commit.as_ref().is_none() {
+
+    let no_commit  = project.no_commit.or(defaults.no_commit.clone()).unwrap_or(false);
+    if !no_commit {
         let files_to_add = project
             .files
             .as_ref()
-            .unwrap()
+            .unwrap_or(&"*".to_string())
             .split(" ")
             .map(|e| e.to_string())
             .collect::<Vec<String>>();
