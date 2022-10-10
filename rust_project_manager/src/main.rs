@@ -23,9 +23,10 @@ struct Defaults {
 
 #[derive(Deserialize)]
 struct ProjectConfig {
-    // TODO ::
+    // TODO :: Find usage for this
     name: Option<String>,
     path: Option<String>,
+    // TODO :: Create callable function // run:_file_name_ or file://file_path
     message: Option<String>,
     no_commit: Option<bool>,
     // TODO ::
@@ -38,7 +39,7 @@ struct ProjectConfig {
 const HAVAS_GIT_CONFIG_PATH: &'static str = "/bin/project_file.toml";
 const HAVAS_GIT_CONFIG_PATH_KEY: &'static str = "HAVAS_PROJECT_CONFIG";
 
-const DEFAULT_MESSAGE: &'static str = "I was lazy";
+const DEFAULT_MESSAGE: &'static str = "I too lazy to write commit message";
 const DEFAULT_NO_COMMIT: bool = false;
 const DEFAULT_FILES_TO_ADD: &'static str = "*";
 
