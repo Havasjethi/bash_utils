@@ -11,6 +11,14 @@ use toml;
 #[derive(Deserialize, Debug)]
 struct Outer {
     project: Vec<ProjectConfig>,
+    defaults: Option<Defaults>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Defaults {
+    message: Option<String>,
+    no_commit: Option<bool>,
+    files: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -32,20 +40,24 @@ fn main() {
 
     for project in parsed.project {
         // do_operation(project);
-        do_shit_git(project);
+        do_shit_git(project, &parsed.defaults);
     }
 }
 
-fn do_shit_git(mut project: ProjectConfig) {
+fn do_shit_git(project: ProjectConfig, outer: &Option<Defaults>) {
     let path = shellexpand::tilde(&project.path.as_ref().expect("Workdir missing")).to_string();
     let repo = Repository::open(path).expect("Folder not found");
-    let mut index = repo.index().expect("cannot get index");
-    let commit_message = "AM I Crazy?";
-    let head = repo.head().unwrap();
+    let mut index = repo.index().expect("Unable to get index");
+    let head = repo.head().expect("Unable to get HEAD");
+    let defaults = outer.as_ref().unwrap();
+    let commit_message = project
+        .message
+        .or(defaults.message.clone())
+        .unwrap_or("I was too lazy to write commit message".into());
 
     // If commits enabled -> Commit selected changes
     if project.no_commit.as_ref().is_none() {
-        let stuff = project
+        let files_to_add = project
             .files
             .as_ref()
             .unwrap()
@@ -53,28 +65,23 @@ fn do_shit_git(mut project: ProjectConfig) {
             .map(|e| e.to_string())
             .collect::<Vec<String>>();
 
-        // index
-        // .add_all(&stuff, git2::IndexAddOption::DEFAULT, None)
-        // .unwrap();
-        index.update_all(&stuff, None).unwrap();
-        let tree_oid = index.write_tree().ok();
+        index.update_all(&files_to_add, None).unwrap();
 
+        let tree_oid = index.write_tree().ok();
         let tree = repo.find_tree(tree_oid.unwrap()).unwrap();
         let head_commit = head.peel_to_commit().unwrap();
         let sign = repo.signature().unwrap();
 
-        let commit = repo
+        let commit_oid = repo
             .commit(
                 Some("HEAD"),
                 &sign,
                 &sign,
-                commit_message,
+                &commit_message,
                 &tree,
                 &[&head_commit],
             )
             .unwrap();
-        // index.clear().unwrap();
-        // index.write().unwrap();
 
         index.read(false);
         index.write();
@@ -82,42 +89,20 @@ fn do_shit_git(mut project: ProjectConfig) {
 
     let mut remote = repo.find_remote("origin").unwrap();
 
-    let x: &[&str] = &[head.name().unwrap()];
+    let branch_ref: &[&str] = &[head.name().unwrap()];
 
     let mut push_options: git2::PushOptions = git2::PushOptions::new();
-
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
         dbg!((&_url, &username_from_url, &_allowed_types));
-        // git2::Cred::ssh_key(username, publickey, privatekey, passphrase)
-
-        // git2::Cred::ssh_key(
-        // "havas", // username_from_url.unwrap(),
-        // None,
-        // std::path::Path::new(&format!("{}/.ssh/id_rsa", std::env::var("HOME").unwrap())),
-        // None,
-        // )
-
-        // Gitlab ✓  GitHub X
+        // Gitlab ✓  GitHub ✓
         let res = git2::Cred::ssh_key_from_agent(&username_from_url.unwrap());
-        let private = std::path::Path::new("/home/havas/.ssh/havas_github");
-        let public = std::path::Path::new("/home/havas/.ssh/havas_github.pub");
-        // let res = git2::Cred::ssh_key(&username_from_url.unwrap(), Some(public), private, None);
-        // let res = git2::Cred::default();
-        // let res = git2::Cred::username(&username_from_url.unwrap());
-        // let res = git2::Cred::ssh_key_from_memory(
-        // &username_from_url.unwrap(),
-        // Some("/home/havas/.ssh/havas_github"),
-        // "/home/havas/.ssh/havas_github.pub",
-        // None,
-        // );
         dbg!(res.is_ok());
-
         res
     });
 
     push_options.remote_callbacks(callbacks);
-    remote.push(&x, Some(&mut push_options)).unwrap();
+    remote.push(&branch_ref, Some(&mut push_options)).unwrap();
 }
 
 fn do_operation(project: ProjectConfig) {
