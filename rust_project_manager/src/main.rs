@@ -88,12 +88,13 @@ fn main() {
             create_commit(&repo, Some(files), commit_message);
         }
 
-        push(&repo, project, &parsed.defaults);
+        let target_branch = "origin";
+        push(&repo, target_branch);
     }
 }
 
 fn create_commit(repo: &git2::Repository, files_to_add: Option<&str>, commit_message: &str) {
-    let mut head = repo.head().expect("Unable to get index");
+    let head = repo.head().expect("Unable to get index");
     let mut index = repo.index().expect("Unable to get index");
 
     if let Some(file_matcher) = files_to_add {
@@ -125,17 +126,18 @@ fn create_commit(repo: &git2::Repository, files_to_add: Option<&str>, commit_mes
     index.write().unwrap();
 }
 
-fn push(repo: &git2::Repository, project: &ProjectConfig, defaults: &Option<Defaults>) {
+fn push(repo: &git2::Repository, target: &str) {
+    let mut index = repo.index().expect("Unable to get index");
     let head = repo.head().expect("Unable to get HEAD");
 
-    // Commit message
-    let mut remote = repo.find_remote("origin").unwrap();
+    let mut remote = repo.find_remote(target).unwrap();
 
     let branch_ref: &[&str] = &[head.name().unwrap()];
 
     let mut push_options: git2::PushOptions = git2::PushOptions::new();
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        // Note :: Should it support pwd auth??
         // Gitlab ✓  GitHub ✓
         git2::Cred::ssh_key_from_agent(&username_from_url.unwrap())
     });
