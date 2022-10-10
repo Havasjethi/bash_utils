@@ -32,15 +32,18 @@ struct ProjectConfig {
     // TODO ::
     folder_regex: Option<String>,
     files: Option<String>,
-    no_push: Option<bool>,
+    should_push: Option<bool>,
     ignore: Option<bool>,
 }
 
 impl ProjectConfig {
-    // pub fn should_push (&self, defaults: Defaults) -> bool {
-    // self.no_push.or_else(defaults.map(|e| ))
-
-    // }
+    pub fn should_push(&self, defaults: &Option<Defaults>) -> bool {
+        self.should_push
+            .or(defaults
+                .as_ref()
+                .map(|e| e.no_push.unwrap_or(DEFAULT_SHOULD_PUSH)))
+            .unwrap_or(DEFAULT_SHOULD_PUSH)
+    }
 }
 
 const HAVAS_GIT_CONFIG_PATH: &'static str = "/bin/project_file.toml";
@@ -97,8 +100,10 @@ fn main() {
             create_commit(&repo, Some(files), commit_message);
         }
 
-        let target_branch = "origin";
-        push(&repo, target_branch);
+        if project.should_push(&defaults) {
+            let target_branch = "origin";
+            push(&repo, target_branch);
+        }
     }
 }
 
