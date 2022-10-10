@@ -38,63 +38,100 @@ struct ProjectConfig {
 const HAVAS_GIT_CONFIG_PATH: &'static str = "/bin/project_file.toml";
 const HAVAS_GIT_CONFIG_PATH_KEY: &'static str = "HAVAS_PROJECT_CONFIG";
 
+const DEFAULT_MESSAGE: &'static str = "I was lazy";
+const DEFAULT_NO_COMMIT: bool = false;
+const DEFAULT_FILES_TO_ADD: &'static str = "*";
+
 fn main() {
     let parsed = get_config();
+    let defaults = &parsed.defaults;
 
-    for project in parsed.project {
+    for project in &parsed.project {
         if project.ignore.unwrap_or(false) {
             continue;
         }
-        commit_and_or_push(project, &parsed.defaults);
+
+        let path = shellexpand::tilde(&project.path.as_ref().expect("Workdir missing")).to_string();
+        let repo = Repository::open(path).expect("Folder not found");
+
+        let commit_message: &str = project.message.as_ref().map(|e| e.as_str()).unwrap_or(
+            defaults
+                .as_ref()
+                .map(|e| {
+                    e.message
+                        .as_ref()
+                        .map(|e| e.as_str())
+                        .unwrap_or(DEFAULT_MESSAGE)
+                })
+                .unwrap_or(DEFAULT_MESSAGE),
+        );
+
+        let no_commit: bool = project.no_commit.unwrap_or(
+            defaults
+                .as_ref()
+                .map(|e| e.no_commit.unwrap_or(DEFAULT_NO_COMMIT))
+                .unwrap_or(DEFAULT_NO_COMMIT),
+        );
+
+        if !no_commit {
+            let files = project.files.as_ref().map(|e| e.as_str()).unwrap_or(
+                defaults
+                    .as_ref()
+                    .map(|e| {
+                        e.files
+                            .as_ref()
+                            .map(|e| e.as_str())
+                            .unwrap_or(DEFAULT_FILES_TO_ADD)
+                    })
+                    .unwrap_or(DEFAULT_FILES_TO_ADD),
+            );
+            create_commit(&repo, Some(files), commit_message);
+        }
+
+        push(&repo, project, &parsed.defaults);
     }
 }
 
-fn commit_and_or_push(project: ProjectConfig, defaults: &Option<Defaults>) {
-    let path = shellexpand::tilde(&project.path.as_ref().expect("Workdir missing")).to_string();
-    let repo = Repository::open(path).expect("Folder not found");
+fn create_commit(repo: &git2::Repository, files_to_add: Option<&str>, commit_message: &str) {
+    let mut head = repo.head().expect("Unable to get index");
     let mut index = repo.index().expect("Unable to get index");
-    let head = repo.head().expect("Unable to get HEAD");
-    let defaults = defaults.as_ref().unwrap();
-    let commit_message = project
-        .message
-        .or(defaults.message.clone())
-        .unwrap_or("I was too lazy to write commit message".into());
 
-    let no_commit = project
-        .no_commit
-        .or(defaults.no_commit.clone())
-        .unwrap_or(false);
-
-    // Commit message
-    if !no_commit {
-        let files_to_add = project
-            .files
-            .as_ref()
-            .unwrap_or(&"*".to_string())
+    if let Some(file_matcher) = files_to_add {
+        let files_to_add = file_matcher
+            // .unwrap_or(&"*".to_string())
             .split(" ")
             .map(|e| e.to_string())
             .collect::<Vec<String>>();
 
         index.update_all(&files_to_add, None).unwrap();
-
-        let tree_oid = index.write_tree().ok();
-        let tree = repo.find_tree(tree_oid.unwrap()).unwrap();
-        let head_commit = head.peel_to_commit().unwrap();
-        let sign = repo.signature().unwrap();
-
-        repo.commit(
-            Some("HEAD"),
-            &sign,
-            &sign,
-            &commit_message,
-            &tree,
-            &[&head_commit],
-        )
-        .unwrap();
-
-        index.read(false).unwrap();
-        index.write().unwrap();
     }
+
+    let tree_oid = index.write_tree().ok();
+    let tree = repo.find_tree(tree_oid.unwrap()).unwrap();
+    let head_commit = head.peel_to_commit().unwrap();
+    let sign = repo.signature().unwrap();
+
+    repo.commit(
+        Some("HEAD"),
+        &sign,
+        &sign,
+        &commit_message,
+        &tree,
+        &[&head_commit],
+    )
+    .unwrap();
+
+    index.read(false).unwrap();
+    index.write().unwrap();
+}
+
+fn push(repo: &git2::Repository, project: &ProjectConfig, defaults: &Option<Defaults>) {
+    let mut index = repo.index().expect("Unable to get index");
+    let head = repo.head().expect("Unable to get HEAD");
+
+    let defaults = defaults.as_ref().unwrap();
+
+    // Commit message
 
     let no_push = project.no_push.or(defaults.no_push).unwrap_or(false);
     if no_push {
