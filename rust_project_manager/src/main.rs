@@ -71,7 +71,7 @@ struct ProjectConfig {
     // TODO :: Create callable function // run:_file_name_ or file://file_path
     message: Option<String>,
     no_commit: Option<bool>,
-    // TODO :: ?? Folder matching for spicyness
+    // TODO :: ?? Folder matching for spiciness
     // folder_regex: Option<String>,
     files: Option<String>,
     should_push: Option<bool>,
@@ -180,7 +180,6 @@ fn push(repo: &git2::Repository, target: &str) {
 fn get_config() -> HavasProjectConfig {
     let project_file = std::env::args_os()
         .skip(1)
-        // .map(|e| e.into())
         .collect::<Vec<std::ffi::OsString>>()
         .pop()
         .or_else(|| std::env::var_os(HAVAS_GIT_CONFIG_PATH_KEY))
